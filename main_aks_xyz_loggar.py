@@ -162,7 +162,7 @@ def main():
     brukarkommandoar = queue.Queue()
 
     connected = True
-    port = 'COM3'
+    port = 'COM4'
     baud = 115200  # 9600
 
     serieport = serial.Serial(port, baud, timeout=1)
