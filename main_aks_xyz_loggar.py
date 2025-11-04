@@ -19,6 +19,9 @@ import serial
 import matplotlib.pyplot as mpl
 from matplotlib.animation import FuncAnimation
 
+# Importerer GUI oppsett
+# from raakode_gui_metoder import MainWindow
+
 # --------------------------------------------------------------------------
 # Oppsett og Metodar for Liveplotting
 # --------------------------------------------------------------------------
@@ -162,7 +165,7 @@ def main():
     brukarkommandoar = queue.Queue()
 
     connected = True
-    port = 'COM4'
+    port = 'COM3'
     baud = 115200  # 9600
 
     serieport = serial.Serial(port, baud, timeout=1)
