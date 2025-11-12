@@ -17,43 +17,44 @@ import time
 import numpy as np
 import serial
 import matplotlib.pyplot as mpl
-from matplotlib.animation import FuncAnimation
+#from matplotlib.animation import FuncAnimation
 
 # Importerer GUI oppsett
-# from raakode_gui_metoder import MainWindow
-
+import raakode_gui_metoder
+import kommando_status
+#start_event = threading.Event()
 # --------------------------------------------------------------------------
 # Oppsett og Metodar for Liveplotting
 # --------------------------------------------------------------------------
-fig, ax = mpl.subplots()
-x_data = []
-y_data = []
-line, =ax.plot([],[],'b-')
-datakoe_x=queue.Queue()
-stopp_kommando=0
+#fig, ax = mpl.subplots()
+#x_data = []
+#y_data = []
+#line, =ax.plot([],[],'b-')
+#datakoe_x=queue.Queue()
+#stopp_kommando=0
 
 
 
-def init():
-    ax.relim()
-    ax.autoscale_view()
-    return line,
-
-def update(frame):
-    while not datakoe_x.empty():
-        y=datakoe_x.get()
-        x_data.append(time.time())
-        y_data.append(y)
-    if len(x_data)>100:
-        x_data.pop(0)
-        y_data.pop(0)
-    if x_data:
-        line.set_data(x_data, y_data)
-        ax.relim()
-        ax.autoscale_view()
-    if stopp_kommando == 's':
-        ani.event_source.stop()
-    return line,
+#def init():
+#    ax.relim()
+#    ax.autoscale_view()
+#    return line,
+#
+#def update(frame):
+#    while not datakoe_x.empty():
+#        y=datakoe_x.get()
+#        x_data.append(time.time())
+#        y_data.append(y)
+#    if len(x_data)>100:
+#        x_data.pop(0)
+#        y_data.pop(0)
+#    if x_data:
+#        line.set_data(x_data, y_data)
+#        ax.relim()
+#        ax.autoscale_view()
+#    if stopp_kommando == 's':
+#        ani.event_source.stop()
+#    return line,
 
 
 
@@ -82,7 +83,7 @@ def seriekomm(serieport, kommando_koe, meldingar):  # Innhald i traaden
     tilstand = ny_kommando
     tidteller=0
     hextall=[]
-    x_verdi=[]
+#    x_verdi=[]
     verdi=0
 #    mpl.ion()
 #    fig, ax = mpl.subplots()
@@ -106,8 +107,17 @@ def seriekomm(serieport, kommando_koe, meldingar):  # Innhald i traaden
                 hextall.append(teikn)
             if len(hextall)==3:
                 verdi=256*hexascii2int(hextall[0])+16*hexascii2int(hextall[1])+hexascii2int(hextall[2])
-                print(verdi)
-                datakoe_x.put(verdi)
+                if verdi >= 32768:
+                    
+                    kommando_status.maaleverdi = verdi-65536
+                    print(kommando_status.maaleverdi)
+                else:
+                    
+                    kommando_status.maaleverdi = verdi
+                    print(kommando_status.maaleverdi)
+
+    
+#                datakoe_x.put(verdi)
 #                t=time.time()-start_time
 #                x_data.append(t)
 #                y_data.append(verdi)
@@ -165,7 +175,7 @@ def main():
     brukarkommandoar = queue.Queue()
 
     connected = True
-    port = 'COM3'
+    port = 'COM4'
     baud = 115200  # 9600
 
     serieport = serial.Serial(port, baud, timeout=1)
@@ -180,17 +190,23 @@ def main():
 
     print('Loggaren er klar')
 
-    while kommando != 'k':
-        kommando = input('Gi kommando(k-koeyr logging, s-stopp logging):\n')  # Loepande lesing, dvs. vil staa her
+#    while kommando != 'k':
+#        kommando = input('Gi kommando(k-koeyr logging, s-stopp logging):\n')  # Loepande lesing, dvs. vil staa her
     # til det kjem noko inn fraa tastaturet.
+    while not kommando_status.start_event.is_set():
+        time.sleep(0.1)
 
+    kommando='k'
     print('Startar logging')
     brukarkommandoar.put(kommando)  # Gi melding til serietraaden om aa starta sjekking av port
     serieport.write('k'.encode('utf-8'))  # Gi melding til uC-en om aa koeyra i gong # KT la til encoding
 
-    while kommando != 's':
-        kommando = input('Gi kommando:\n')  # Loepande lesing, dvs. staar her
-    
+#    while kommando != 's':
+#        kommando = input('Gi kommando:\n')  # Loepande lesing, dvs. staar her
+
+    while not kommando_status.stopp_event.is_set():
+        time.sleep(0.1)
+
     stopp_kommando='s'
     brukarkommandoar.put(kommando)  # Gi melding til serietraaden om aa stoppa, men fullfoera logging tom. ETX
     time.sleep(1)  # Sikra at traaden faar med seg slutten paa meldinga
@@ -213,7 +229,7 @@ def main():
 
     for i in range(0, len(uC_meldingar)):
         if uC_meldingar[i] == 'T':
-            tid_raa.append(16 * hexascii2int(uC_meldingar[i + 1]) + hexascii2int(uC_meldingar[i + 2]))
+            kommando_status.tid_raa.append(16 * hexascii2int(uC_meldingar[i + 1]) + hexascii2int(uC_meldingar[i + 2]))
 
         elif uC_meldingar[i] == 'X':
             #Fiks slik at ein faar fram negative tal.
@@ -243,79 +259,83 @@ def main():
 
     for i in range(0, len(a_x_raa)):
         if a_x_raa[i] >= 32768:
-            a_x.append((float(a_x_raa[i])-65536.0)/1000.0) # 1mg pr. LSb iflg. databladet.
+            kommando_status.a_x.append((float(a_x_raa[i])-65536.0)/1000.0) # 1mg pr. LSb iflg. databladet.
         else:
-            a_x.append(float(a_x_raa[i]/1000.0))
+            kommando_status.a_x.append(float(a_x_raa[i]/1000.0))
 
     for i in range(0, len(a_y_raa)):
         if a_y_raa[i] >= 32768:
-            a_y.append((float(a_y_raa[i])-65536.0)/1000.0)
+            kommando_status.a_y.append((float(a_y_raa[i])-65536.0)/1000.0)
         else:
-            a_y.append(float(a_y_raa[i]/1000.0))
+            kommando_status.a_y.append(float(a_y_raa[i]/1000.0))
 
     for i in range(0, len(a_z_raa)):
         if a_z_raa[i] >= 32768:
-            a_z.append((float(a_z_raa[i])-65536.0)/1000.0)
+            kommando_status.a_z.append((float(a_z_raa[i])-65536.0)/1000.0)
         else:
-            a_z.append(float(a_z_raa[i])/1000.0)
+            kommando_status.a_z.append(float(a_z_raa[i])/1000.0)
 
-    for i in range(0, len(a_z)):
-        aks_abs.append(np.sqrt(a_x[i]**2 + a_y[i]**2 + a_z[i]**2))
+    for i in range(0, len(kommando_status.a_z)):
+        kommando_status.aks_abs.append(np.sqrt(kommando_status.a_x[i]**2 + kommando_status.a_y[i]**2 + kommando_status.a_z[i]**2))
     for i in range(0, len(a_z_raa)):
-        ayz_abs.append(np.sqrt(a_y[i]**2 + a_z[i]**2))
+        kommando_status.ayz_abs.append(np.sqrt(kommando_status.a_y[i]**2 + kommando_status.a_z[i]**2))
 
-    for i in range(0, len(a_x)):
-        stamp.append(np.arctan2(a_x[i], ayz_abs[i]) * 180 / np.pi)
+    for i in range(0, len(kommando_status.a_x)):
+        kommando_status.stamp.append(np.arctan2(kommando_status.a_x[i], kommando_status.ayz_abs[i]) * 180 / np.pi)
 
     for i in range(0, len(a_x)):
         if a_z[i] == 0:
             if i == 0:
-                rull.append(0)
+                kommando_status.rull.append(0)
             else:
-                rull.append(rull[i-1])     #Unngaa deling paa null
+                kommando_status.rull.append(rull[i-1])     #Unngaa deling paa null
 
         else:
-            rull.append(np.arctan2(a_y[i], a_z[i]) * 180 / np.pi)
+            kommando_status.rull.append(np.arctan2(a_y[i], a_z[i]) * 180 / np.pi)
 
   # Skal laga ei kontinuerleg aukande tidsliste som startar i null.
     tid = []
     Ts = 0.1  # Sampleintervall i sekund
     tidsomloepnr = 0
 
-    for j in range(0, len(tid_raa)):
-        tid.append(tid_raa[j] + tidsomloepnr * 256)
+    for j in range(0, len(kommando_status.tid_raa)):
+        kommando_status.tid.append(kommando_status.tid_raa[j] + tidsomloepnr * 256)
 
-        if tid_raa[j] == 255: # Tidsreferansen er paa 8 bit og rullar rundt kvar 256. gong
+        if kommando_status.tid_raa[j] == 255: # Tidsreferansen er paa 8 bit og rullar rundt kvar 256. gong
             tidsomloepnr = tidsomloepnr + 1
 
-    skyv = tid[0] # Vil at tidslista skal starta paa null.
+    skyv = kommando_status.tid[0] # Vil at tidslista skal starta paa null.
     print(skyv)
-    for k in range(0, len(tid)):
-        tid[k] = Ts * (tid[k] - skyv)
+    for k in range(0, len(kommando_status.tid)):
+        kommando_status.tid[k] = Ts * (kommando_status.tid[k] - skyv)
 
- # Skriv ut listene for kontroll
-    print(tid_raa)
-    print(tid)
-    print(len(tid))
-    print(a_x_raa)
-    print(len(a_x_raa))
-    print(a_y_raa)
-    print(len(a_y_raa))
-    print(a_z_raa)
-    print(len(a_z_raa))
-    print(stamp)
-    print(len(a_x))
-    print(rull)
-    print(len(a_x))
 
  # Seks subplott med felles tidsakse.
+    
+
+
+    print('Slutt i main')
+
+if __name__ == "__main__":
+
+    thread2 = threading.Thread(target=main, daemon=True)
+    thread2.start()
+
+    thread1 = threading.Thread(target=raakode_gui_metoder.sensor_loop, daemon=True)
+    thread1.start()
+
+    applikasjon = raakode_gui_metoder.QApplication(raakode_gui_metoder.sys.argv)
+    vindu = raakode_gui_metoder.MainWindow()
+    vindu.show()
+    applikasjon.exec()    
+
     f, aks_sub = mpl.subplots(6, sharex=True)
-    aks_sub[0].plot(tid, a_x)
-    aks_sub[1].plot(tid, a_y)
-    aks_sub[2].plot(tid, a_z)
-    aks_sub[3].plot(tid, aks_abs)
-    aks_sub[4].plot(tid, stamp)
-    aks_sub[5].plot(tid, rull)
+    aks_sub[0].plot(kommando_status.tid, kommando_status.a_x)
+    aks_sub[1].plot(kommando_status.tid, kommando_status.a_y)
+    aks_sub[2].plot(kommando_status.tid, kommando_status.a_z)
+    aks_sub[3].plot(kommando_status.tid, kommando_status.aks_abs)
+    aks_sub[4].plot(kommando_status.tid, kommando_status.stamp)
+    aks_sub[5].plot(kommando_status.tid, kommando_status.rull)
     aks_sub[5].set_xlabel('Tid [sek]')
     aks_sub[1].set_ylabel('Akselerasjon [g]')
     aks_sub[4].set_ylabel('Vinkel [grader]')
@@ -332,11 +352,22 @@ def main():
     aks_sub[4].grid()
     aks_sub[5].grid()
 
-    mpl.show()
+    mpl.show()    
 
-    print('Slutt i main')
+ # Skriv ut listene for kontroll
+    print(kommando_status.tid_raa)
+    print(kommando_status.tid)
+    print(len(kommando_status.tid))
+    #print(kommando_status.a_x_raa)
+    #print(len(kommando_status.a_x_raa))
+    #print(kommando_status.a_y_raa)
+    #print(len(kommando_status.a_y_raa))
+    #print(kommando_status.a_z_raa)
+    #print(len(kommando_status.a_z_raa))
+    print(kommando_status.stamp)
+    print(len(kommando_status.a_x))
+    print(kommando_status.rull)
+    print(len(kommando_status.a_x))
 
-if __name__ == "__main__":
-    threading.Thread(target=main, daemon=True).start()
-    ani=FuncAnimation(fig, update, init_func=init, interval=50, blit=True)
-    mpl.show()
+    #ani=FuncAnimation(fig, update, init_func=init, interval=50, blit=True)
+    #mpl.show()

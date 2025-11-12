@@ -6,31 +6,37 @@ from PyQt6.QtWidgets import QApplication, QLineEdit, QDial, QPushButton, QMainWi
 from PyQt6.QtCore import QTimer
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import kommando_status
 
-sensor_data = {
-    "x": np.linspace(0, 2*np.pi, 100),
-    "y": np.zeros(100),
-    "dy": np.zeros(100)   # store derivative too
-}
-delta_t=0.05
-
+# Oppsett for innhenting og stopping av sensordata ----------------
+delta_t = 0.05 # Periodetid for sampling i live-plottet
+maalinger_n = 100 # Antall målinger som beholdes i live-plottet
 stopp_trigger = threading.Event()
 
-def sensor_loop():
+sensor_data = { #Array som holder på sensormålingene
+    "x": np.linspace(0, delta_t*maalinger_n, 100),
+    "y": np.zeros(maalinger_n),
+    "dy": np.zeros(maalinger_n)   
+}
+
+def sensor_loop(): #Funksjon som setter inn måleverdien fra sensor og rullerer verdiene videre slik at datasettet som plottes alltid er maalinger_n langt.
     while not stopp_trigger.is_set():
-        sensor_data["y"] = np.sin(sensor_data["x"] + time.time())
+        sensor_data["y"][:-1] = sensor_data["y"][1:]
+        sensor_data["y"][-1] = kommando_status.maaleverdi
         sensor_data["dy"] = np.gradient(sensor_data["y"], delta_t)
         time.sleep(delta_t)
+# ---------------------------------------------------------------
 
+# Oppsett av grafer til GUI ----------------------------
 class Mpl_grafer(FigureCanvas):
     def __init__(self, parent=None):
         self.fig = Figure()
         self.ax = self.fig.add_subplot(111)
         super().__init__(self.fig)
         self.setParent(parent)
+#------------------------------------------------------
 
-
-
+# GUI hovedvindu -------------------------------------
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -42,7 +48,7 @@ class MainWindow(QMainWindow):
         subgrid_2 = QVBoxLayout()
         subgrid_3 = QVBoxLayout()
 
-        # Setter opp Graf 1 og 2, test-signaler hardkoda inn for nå, må endres til å kunne motta et hvilket som helst signal
+        # Setter opp Graf 1 og 2, per nå er graf 1 bare en avlesning av X-retning på aks-måler, og 2 er den deriverte av dette
         self.graf = Mpl_grafer(self)
         self.line, = self.graf.ax.plot(sensor_data["x"], sensor_data["y"], color="blue")
 
@@ -52,13 +58,13 @@ class MainWindow(QMainWindow):
         subgrid_1.addWidget(self.graf)
         subgrid_1.addWidget(self.graf_deriv)
 
-        # Setter opp en timer for å automatisk oppdatere plottene, må kanskje løses på en annen måte med faktiske signaler
+        # Setter opp en timer for å automatisk oppdatere plottene
         self.timer = QTimer()
         self.timer.setInterval(50)
         self.timer.timeout.connect(self.update_plot)
         self.timer.start()
 
-
+        # Setter opp numerisk display og knapper
         self.LCD = QLCDNumber()
         self.LCD.display(30)
 
@@ -69,8 +75,6 @@ class MainWindow(QMainWindow):
         subgrid_2.addWidget(self.tekstboks)
         subgrid_2.addWidget(self.knapp_set)
 
-
-
         self.knapp_start = QPushButton("Start")
         self.knapp_stopp = QPushButton("Stopp")
         subgrid_3.addWidget(self.knapp_start)
@@ -80,7 +84,7 @@ class MainWindow(QMainWindow):
         gridman.addLayout(subgrid_2)
         gridman.addLayout(subgrid_3)
 
-        # Setter opp knapp til å sette verdi fra tekstboks til LCD
+        # Setter opp sknapp-events
         self.knapp_set.clicked.connect(self.update_LCD)
         self.y_shift = 0
 
@@ -93,11 +97,17 @@ class MainWindow(QMainWindow):
         widget.setLayout(gridman)
         self.setCentralWidget(widget)
 
+    # Div funksjoner for knapp-events og oppdatering av GUI-elementer
     def start_kommando(self):
         print("k")   
+        kommando_status.start_event.set()
+        kommando='k'
+        status = 'k'
+        
 
     def stopp_kommando(self):
         print("s")
+        kommando_status.stopp_event.set()
         stopp_trigger.set()
         self.timer.stop()
         QApplication.quit()
@@ -105,6 +115,16 @@ class MainWindow(QMainWindow):
     def update_plot(self):
         self.line.set_ydata(sensor_data["y"] + self.y_shift)
         self.line_deriv.set_ydata(sensor_data["dy"])
+
+        ax = self.line.axes
+        ax_deriv = self.line_deriv.axes
+    
+        # autoscale both plots
+        ax.relim()
+        ax.autoscale_view()
+        ax_deriv.relim()
+        ax_deriv.autoscale_view()
+        
         self.graf.draw()
         self.graf_deriv.draw()
     
@@ -119,14 +139,14 @@ class MainWindow(QMainWindow):
                 print("Vennligst skriv et tall innenfor 20 og 150 [cm].")
         except ValueError:
             print("Vennligst skriv et tall innenfor 20 og 150 [cm].")
-
+#------------------------------------------------------------------
 
 
 if __name__ == "__main__":
     thread1 = threading.Thread(target=sensor_loop, daemon=True)
     thread1.start()
 
-applikasjon = QApplication(sys.argv)
-vindu = MainWindow()
-vindu.show()
-applikasjon.exec()
+    applikasjon = QApplication(sys.argv)
+    vindu = MainWindow()
+    vindu.show()
+    applikasjon.exec()
