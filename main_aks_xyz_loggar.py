@@ -30,31 +30,8 @@ import kommando_status
 #x_data = []
 #y_data = []
 #line, =ax.plot([],[],'b-')
-#datakoe_x=queue.Queue()
-#stopp_kommando=0
 
-
-
-#def init():
-#    ax.relim()
-#    ax.autoscale_view()
-#    return line,
-#
-#def update(frame):
-#    while not datakoe_x.empty():
-#        y=datakoe_x.get()
-#        x_data.append(time.time())
-#        y_data.append(y)
-#    if len(x_data)>100:
-#        x_data.pop(0)
-#        y_data.pop(0)
-#    if x_data:
-#        line.set_data(x_data, y_data)
-#        ax.relim()
-#        ax.autoscale_view()
-#    if stopp_kommando == 's':
-#        ani.event_source.stop()
-#    return line,
+datakoe=queue.Queue()
 
 
 
@@ -68,7 +45,9 @@ def hexascii2int(hex_teikn):
         return (int(ord(hex_teikn) - 48))  # ASCII-koden for '0' er 0x30 = 48
     elif 'A' <= hex_teikn <= 'F':
         return (int(ord(hex_teikn) - 55))  # ASCII-koden for 'A' er 0x41 = 65
-
+    
+def print_bytes(data):
+    print([f"{b:02X}" for b in data])
 #-------------------------------------------------------------------------
 # Kode for ein traad som les serieporten konfigurert i hovudtraaden main.
 # Lesinga startar naar traaden faar ein 'k'(koeyr) via ein kommandokoe og
@@ -76,6 +55,19 @@ def hexascii2int(hex_teikn):
 # Alle mottatte teikn blir lagt inn i ei meldingsliste.
 # Serieporten blir stengt til slutt.
 #-------------------------------------------------------------------------
+
+def seriekomm_egen():
+    while not raakode_gui_metoder.stopp_trigger.is_set():
+               
+        data = raakode_gui_metoder.serieport.read(21)
+        if len(data) == 21:
+            datakoe.put(data)
+        print_bytes(data)
+        kommando_status.maaleverdi = (data[3]<<8)|data[2]
+        kommando_status.error = kommando_status.maaleverdi-300
+        print(kommando_status.maaleverdi)
+        time.sleep(0.001)
+
 def seriekomm(serieport, kommando_koe, meldingar):  # Innhald i traaden
     try:
         ny_kommando = kommando_koe.get()  # Vil henga til han faar foerste kommandoen
@@ -85,20 +77,22 @@ def seriekomm(serieport, kommando_koe, meldingar):  # Innhald i traaden
     tilstand = ny_kommando
     tidteller=0
     hextall=[]
-#    x_verdi=[]
+    #    x_verdi=[]
     verdi=0
-#    mpl.ion()
-#    fig, ax = mpl.subplots()
-#    line, = ax.plot([], [], 'b-')  # create an empty line
-#    x_data, y_data = [], []
-#    start_time = time.time()
+
 
 
     while tilstand == 'k':  # Saa lenge ein vil k(oeyra logging)
 
         #		while serieport.inWaiting() > 0:
-        teikn = str(serieport.read(1), encoding='utf-8')  # Les eitt teikn.  #KT La til convert til str
+        data = raakode_gui_metoder.serieport.read(21)
+        
+        print_bytes(data)
+        
+        # teikn = str(serieport.read(1), encoding='utf-8')  # Les eitt teikn.  #KT La til convert til str
+        
                                                           # Vil blokkera/henga til det er kome noko aa lesa
+        teikn=0
         meldingar.append(teikn)
         if teikn == 'X':
             tidteller=4
@@ -119,16 +113,6 @@ def seriekomm(serieport, kommando_koe, meldingar):  # Innhald i traaden
                     print(kommando_status.maaleverdi)
 
     
-#                datakoe_x.put(verdi)
-#                t=time.time()-start_time
-#                x_data.append(t)
-#                y_data.append(verdi)
-#                line.set_xdata(x_data)
-#                line.set_ydata(y_data)
-#                ax.relim()
-#                ax.autoscale_view()
-#                #mpl.draw()
-#                FuncAnimation()
                 
                 hextall=[]
                 
@@ -144,7 +128,7 @@ def seriekomm(serieport, kommando_koe, meldingar):  # Innhald i traaden
         if ny_kommando == 's':
             tilstand = ny_kommando  # Stans logging men fullfoer lesing t.o.m meldingshalen ETX
 
-    while teikn != '\x03':  # Heilt til og med meldingshalen ETX
+    while teikn != '\xF0':  # Heilt til og med meldingshalen ETX
         #		while serieport.inWaiting() > 0:
         teikn = str(serieport.read(1), encoding='utf-8')  # Les eitt teikn. #KT La til convert til str
         meldingar.append(teikn)
@@ -177,17 +161,20 @@ def main():
     brukarkommandoar = queue.Queue()
 
     connected = True
-    port = 'COM13'
-    baud = 115200  # 9600
+    #port = 'COM13'
+    #baud = 115200  # 9600
 
-    serieport = serial.Serial(port, baud, timeout=1)
+    #serieport = serial.Serial(port, baud, timeout=1)
 
-    if serieport.isOpen():
-        print(serieport.name, 'er open')
+    
+
+    if raakode_gui_metoder.serieport.isOpen():
+        print(raakode_gui_metoder.serieport.name, 'er open')
     else:
-        serieport.open()
+        raakode_gui_metoder.serieport.open()
 
-    serie_traad = threading.Thread(target=seriekomm, args=(serieport, brukarkommandoar, uC_meldingar))
+    #serie_traad = threading.Thread(target=seriekomm, args=(raakode_gui_metoder.serieport, brukarkommandoar, uC_meldingar))
+    serie_traad = threading.Thread(target=seriekomm_egen, daemon=True)
     serie_traad.start()
 
     print('Loggaren er klar')
@@ -201,7 +188,7 @@ def main():
     kommando='k'
     print('Startar logging')
     brukarkommandoar.put(kommando)  # Gi melding til serietraaden om aa starta sjekking av port
-    serieport.write('k'.encode('utf-8'))  # Gi melding til uC-en om aa koeyra i gong # KT la til encoding
+    #serieport.write('k'.encode('utf-8'))  # Gi melding til uC-en om aa koeyra i gong # KT la til encoding
 
 #    while kommando != 's':
 #        kommando = input('Gi kommando:\n')  # Loepande lesing, dvs. staar her
@@ -212,7 +199,7 @@ def main():
     stopp_kommando='s'
     brukarkommandoar.put(kommando)  # Gi melding til serietraaden om aa stoppa, men fullfoera logging tom. ETX
     time.sleep(1)  # Sikra at traaden faar med seg slutten paa meldinga
-    serieport.write('s'.encode('utf-8'))  # Gi melding til uC-en om aa stoppa sending av nye data #KT La til encoding
+    raakode_gui_metoder.serieport.write('s'.encode('utf-8'))  # Gi melding til uC-en om aa stoppa sending av nye data #KT La til encoding
     print('Stoppar logging')
 
     # serieport.close()     # Det er naa kome kommando om aa stoppa logginga
@@ -320,11 +307,13 @@ def main():
 
 if __name__ == "__main__":
 
-    thread2 = threading.Thread(target=main, daemon=True)
+    thread1 = threading.Thread(target=raakode_gui_metoder.sensor_loop)
+    thread1.start()
+
+    thread2 = threading.Thread(target=seriekomm_egen)
     thread2.start()
 
-    thread1 = threading.Thread(target=raakode_gui_metoder.sensor_loop, daemon=True)
-    thread1.start()
+
 
     applikasjon = raakode_gui_metoder.QApplication(raakode_gui_metoder.sys.argv)
     vindu = raakode_gui_metoder.MainWindow()

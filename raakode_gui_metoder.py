@@ -22,13 +22,20 @@ sensor_data = { #Array som holder på sensormålingene
 
 def sensor_loop(): #Funksjon som setter inn måleverdien fra sensor og rullerer verdiene videre slik at datasettet som plottes alltid er maalinger_n langt.
     while not stopp_trigger.is_set():
+
         sensor_data["y"][:-1] = sensor_data["y"][1:]
+        sensor_data["dy"][:-1] = sensor_data["dy"][1:]
+
         sensor_data["y"][-1] = kommando_status.maaleverdi
-        sensor_data["dy"] = np.gradient(sensor_data["y"], delta_t)
+        sensor_data["dy"][-1] = kommando_status.error        
+
+
+        #print(sensor_data["dy"])
+        
         time.sleep(delta_t)
 # ---------------------------------------------------------------
 
-ser_config = serial.Serial(
+serieport = serial.Serial(
     port='COM13',
     baudrate=115200,
     bytesize=serial.EIGHTBITS,   # 8 data bits
@@ -38,7 +45,7 @@ ser_config = serial.Serial(
 )
 
 def send_RPID(RPID_verdier):
-    ser_config.write(RPID_verdier)
+    serieport.write(RPID_verdier)
     
 
 def BE_til_LE(hexverdi):
@@ -229,4 +236,4 @@ if __name__ == "__main__":
     vindu = MainWindow()
     vindu.show()
     applikasjon.exec()
-    ser_config.close()
+    serieport.close()

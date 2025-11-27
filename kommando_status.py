@@ -22,3 +22,4 @@ rull = []     # rullvinkel psi i grader (om x-aksen)
 stamp = []    # stampvinkel theta i grader (om y-aksen)
 
 maaleverdi = 0
+error = 0
