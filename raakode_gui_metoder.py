@@ -7,6 +7,7 @@ from PyQt6.QtCore import QTimer
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import kommando_status
+import serial
 
 # Oppsett for innhenting og stopping av sensordata ----------------
 delta_t = 0.05 # Periodetid for sampling i live-plottet
@@ -27,6 +28,22 @@ def sensor_loop(): #Funksjon som setter inn måleverdien fra sensor og rullerer 
         time.sleep(delta_t)
 # ---------------------------------------------------------------
 
+ser_config = serial.Serial(
+    port='COM13',
+    baudrate=115200,
+    bytesize=serial.EIGHTBITS,   # 8 data bits
+    parity=serial.PARITY_NONE,   # No parity
+    stopbits=serial.STOPBITS_ONE, # 1 stop bit
+    timeout=1
+)
+
+def send_RPID(RPID_verdier):
+    ser_config.write(RPID_verdier)
+    
+
+def BE_til_LE(hexverdi):
+    return bytes([hexverdi & 0xFF, (hexverdi>>8) & 0xFF])
+
 # Oppsett av grafer til GUI ----------------------------
 class Mpl_grafer(FigureCanvas):
     def __init__(self, parent=None):
@@ -43,10 +60,16 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ELE340 - Gruppe E")
 
         # Setter opp ønsket layout på GUI: 3 blokker horisontalt med undergrupper for: Grafer, setpunkt, start/stopp
-        gridman = QHBoxLayout()
-        subgrid_1 = QVBoxLayout()
-        subgrid_2 = QVBoxLayout()
-        subgrid_3 = QVBoxLayout()
+        gridman = QVBoxLayout()
+
+        subgrid_graf = QVBoxLayout()
+        subgrid_HMI = QHBoxLayout()
+
+        Ref_modul = QVBoxLayout()
+        Kp_modul = QVBoxLayout()
+        Ti_modul = QVBoxLayout()
+        Td_modul = QVBoxLayout()
+        knapp_modul = QVBoxLayout()
 
         # Setter opp Graf 1 og 2, per nå er graf 1 bare en avlesning av X-retning på aks-måler, og 2 er den deriverte av dette
         self.graf = Mpl_grafer(self)
@@ -55,8 +78,6 @@ class MainWindow(QMainWindow):
         self.graf_deriv = Mpl_grafer(self)
         self.line_deriv, = self.graf_deriv.ax.plot(sensor_data["x"], sensor_data["dy"], color="red")
 
-        subgrid_1.addWidget(self.graf)
-        subgrid_1.addWidget(self.graf_deriv)
 
         # Setter opp en timer for å automatisk oppdatere plottene
         self.timer = QTimer()
@@ -65,24 +86,54 @@ class MainWindow(QMainWindow):
         self.timer.start()
 
         # Setter opp numerisk display og knapper
-        self.LCD = QLCDNumber()
-        self.LCD.display(30)
+        self.Ref_LCD = QLCDNumber()
+        self.Ref_LCD.display(kommando_status.Ref_iv)
+        self.Ref_txt = QLineEdit()
 
-        self.tekstboks = QLineEdit()
-        self.knapp_set = QPushButton("Sett distanse")
+        self.Kp_LCD = QLCDNumber()
+        self.Kp_LCD.display(kommando_status.Kp_iv)
+        self.Kp_txt = QLineEdit()
 
-        subgrid_2.addWidget(self.LCD)
-        subgrid_2.addWidget(self.tekstboks)
-        subgrid_2.addWidget(self.knapp_set)
+        self.Ti_LCD = QLCDNumber()
+        self.Ti_LCD.display(kommando_status.Ti_iv)
+        self.Ti_txt = QLineEdit()
+
+        self.Td_LCD = QLCDNumber()
+        self.Td_LCD.display(kommando_status.Td_iv)
+        self.Td_txt = QLineEdit()
 
         self.knapp_start = QPushButton("Start")
         self.knapp_stopp = QPushButton("Stopp")
-        subgrid_3.addWidget(self.knapp_start)
-        subgrid_3.addWidget(self.knapp_stopp)
+        self.knapp_set = QPushButton("Sett distanse")
 
-        gridman.addLayout(subgrid_1)
-        gridman.addLayout(subgrid_2)
-        gridman.addLayout(subgrid_3)
+        #Setter opp innhold i subgrids
+        subgrid_graf.addWidget(self.graf)
+        subgrid_graf.addWidget(self.graf_deriv)
+        
+        Ref_modul.addWidget(self.Ref_LCD)
+        Ref_modul.addWidget(self.Ref_txt)
+
+        Kp_modul.addWidget(self.Kp_LCD)
+        Kp_modul.addWidget(self.Kp_txt)
+
+        Ti_modul.addWidget(self.Ti_LCD)
+        Ti_modul.addWidget(self.Ti_txt)
+        
+        Td_modul.addWidget(self.Td_LCD)
+        Td_modul.addWidget(self.Td_txt)
+        
+        knapp_modul.addWidget(self.knapp_start)
+        knapp_modul.addWidget(self.knapp_set)
+        knapp_modul.addWidget(self.knapp_stopp)
+
+        subgrid_HMI.addLayout(Ref_modul)
+        subgrid_HMI.addLayout(Kp_modul)
+        subgrid_HMI.addLayout(Ti_modul)
+        subgrid_HMI.addLayout(Td_modul)
+        subgrid_HMI.addLayout(knapp_modul)
+
+        gridman.addLayout(subgrid_graf)
+        gridman.addLayout(subgrid_HMI)
 
         # Setter opp sknapp-events
         self.knapp_set.clicked.connect(self.update_LCD)
@@ -103,9 +154,15 @@ class MainWindow(QMainWindow):
         kommando_status.start_event.set()
         kommando='k'
         status = 'k'
+        RPID = (BE_til_LE(kommando_status.Ref_iv))+(BE_til_LE(kommando_status.Kp_iv))+(BE_til_LE(kommando_status.Ti_iv))+(BE_til_LE(kommando_status.Td_iv))
+        print(RPID)
+        send_RPID(RPID)        
         
 
     def stopp_kommando(self):
+        RPID = (BE_til_LE(300))+(BE_til_LE(0))+(BE_til_LE(0))+(BE_til_LE(0))
+        print(RPID)
+        send_RPID(RPID)
         print("s")
         kommando_status.stopp_event.set()
         stopp_trigger.set()
@@ -129,14 +186,36 @@ class MainWindow(QMainWindow):
         self.graf_deriv.draw()
     
     def update_LCD(self):
-        text = self.tekstboks.text()
+        Ref_raa = self.Ref_txt.text()
+        Kp_raa = self.Kp_txt.text()
+        Ti_raa = self.Ti_txt.text()
+        Td_raa = self.Td_txt.text()
+
         try:
-            verdi = float(text)
-            if 20 < verdi < 150:
-                self.LCD.display(verdi)
-                self.y_shift = verdi
+            print(1)
+            Ref_verdi = int(Ref_raa)*10
+            print(2)
+            Kp_verdi = int(float(Kp_raa)*1000)
+            Ti_verdi = int(float(Ti_raa)*1000)
+            Td_verdi = int(float(Td_raa)*1000)
+            print(3)
+            print(Ref_verdi)
+            print(Kp_verdi)
+            print(Ti_verdi)
+            print(Td_verdi)
+            if 10 < int(Ref_raa) < 400:
+                self.Ref_LCD.display(float(Ref_raa))   
             else:
                 print("Vennligst skriv et tall innenfor 20 og 150 [cm].")
+            self.Kp_LCD.display(Kp_raa)
+            self.Ti_LCD.display(Ti_raa)
+            self.Td_LCD.display(Td_raa)
+            RPID = (BE_til_LE(Ref_verdi))+(BE_til_LE(Kp_verdi))+(BE_til_LE(Ti_verdi))+(BE_til_LE(Td_verdi))
+            print(RPID)
+            send_RPID(RPID)
+
+
+
         except ValueError:
             print("Vennligst skriv et tall innenfor 20 og 150 [cm].")
 #------------------------------------------------------------------
@@ -150,3 +229,4 @@ if __name__ == "__main__":
     vindu = MainWindow()
     vindu.show()
     applikasjon.exec()
+    ser_config.close()

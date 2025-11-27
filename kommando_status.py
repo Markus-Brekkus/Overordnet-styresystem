@@ -3,6 +3,11 @@ import threading
 start_event = threading.Event()
 stopp_event = threading.Event()
 
+Ref_iv = int(300)
+Kp_iv = int(4000)
+Ti_iv = int(0)
+Td_iv = int(10)
+
 kommando = '0'
 status = '0'
 

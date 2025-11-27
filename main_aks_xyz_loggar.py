@@ -58,6 +58,8 @@ import kommando_status
 
 
 
+
+
 # --------------------------------------------------------------------------
 # Metode for aa gi ut int-verdien til eit hexadesimalt teikn i ASCII-format
 # --------------------------------------------------------------------------
@@ -175,7 +177,7 @@ def main():
     brukarkommandoar = queue.Queue()
 
     connected = True
-    port = 'COM4'
+    port = 'COM13'
     baud = 115200  # 9600
 
     serieport = serial.Serial(port, baud, timeout=1)
