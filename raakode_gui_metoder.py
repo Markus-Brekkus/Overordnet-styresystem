@@ -41,7 +41,7 @@ serieport = serial.Serial(
     bytesize=serial.EIGHTBITS,   # 8 data bits
     parity=serial.PARITY_NONE,   # No parity
     stopbits=serial.STOPBITS_ONE, # 1 stop bit
-    timeout=1
+    timeout=None
 )
 
 def send_RPID(RPID_verdier):
