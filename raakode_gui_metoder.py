@@ -26,8 +26,8 @@ def sensor_loop(): #Funksjon som setter inn måleverdien fra sensor og rullerer 
         sensor_data["y"][:-1] = sensor_data["y"][1:]
         sensor_data["dy"][:-1] = sensor_data["dy"][1:]
 
-        sensor_data["y"][-1] = kommando_status.maaleverdi
-        sensor_data["dy"][-1] = kommando_status.error        
+        sensor_data["y"][-1] = kommando_status.avstand
+        sensor_data["dy"][-1] = kommando_status.x_aks        
 
 
         #print(sensor_data["dy"])
@@ -193,30 +193,30 @@ class MainWindow(QMainWindow):
         self.graf_deriv.draw()
     
     def update_LCD(self):
-        Ref_raa = self.Ref_txt.text()
-        Kp_raa = self.Kp_txt.text()
-        Ti_raa = self.Ti_txt.text()
-        Td_raa = self.Td_txt.text()
+        kommando_status.Ref_ny = float(self.Ref_txt.text())
+        kommando_status.Kp_ny = float(self.Kp_txt.text())
+        kommando_status.Ti_ny = float(self.Ti_txt.text())
+        kommando_status.Td_ny = float(self.Td_txt.text())
 
         try:
             print(1)
-            Ref_verdi = int(Ref_raa)*10
+            Ref_verdi = int(kommando_status.Ref_ny)*10
             print(2)
-            Kp_verdi = int(float(Kp_raa)*1000)
-            Ti_verdi = int(float(Ti_raa)*1000)
-            Td_verdi = int(float(Td_raa)*1000)
+            Kp_verdi = int(kommando_status.Kp_ny*1000)
+            Ti_verdi = int(kommando_status.Ti_ny*1000)
+            Td_verdi = int(kommando_status.Td_ny*1000)
             print(3)
             print(Ref_verdi)
             print(Kp_verdi)
             print(Ti_verdi)
             print(Td_verdi)
-            if 10 < int(Ref_raa) < 400:
-                self.Ref_LCD.display(float(Ref_raa))   
+            if 10 < int(kommando_status.Ref_ny) < 400:
+                self.Ref_LCD.display(float(kommando_status.Ref_ny))   
             else:
                 print("Vennligst skriv et tall innenfor 20 og 150 [cm].")
-            self.Kp_LCD.display(Kp_raa)
-            self.Ti_LCD.display(Ti_raa)
-            self.Td_LCD.display(Td_raa)
+            self.Kp_LCD.display(kommando_status.Kp_ny)
+            self.Ti_LCD.display(kommando_status.Ti_ny)
+            self.Td_LCD.display(kommando_status.Td_ny)
             RPID = (BE_til_LE(Ref_verdi))+(BE_til_LE(Kp_verdi))+(BE_til_LE(Ti_verdi))+(BE_til_LE(Td_verdi))
             print(RPID)
             send_RPID(RPID)

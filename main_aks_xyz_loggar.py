@@ -17,6 +17,7 @@ import time
 import numpy as np
 import serial
 import matplotlib.pyplot as mpl
+import csv
 #from matplotlib.animation import FuncAnimation
 
 # Importerer GUI oppsett
@@ -77,6 +78,7 @@ def datakoe_handterer():
         datakoe_lokal = list(datakoe.get())
         print_bytes(datakoe_lokal)
 
+        # Sjekker hvor mange skritt samplenr. inkrementeres med
         if start_sjekk:
             sample=1
             sample_skritt=0
@@ -96,19 +98,54 @@ def datakoe_handterer():
         sample_prev=datakoe_lokal[1]
         datakoe_lokal[1]=sample
 
-        kommando_status.maaleverdi = (datakoe_lokal[3]<<8)|datakoe_lokal[2]
-        kommando_status.error = kommando_status.maaleverdi-300
+        # Omgjøring av innkommende verdier
+
+        kommando_status.avstand = (datakoe_lokal[3]<<8)|datakoe_lokal[2]
+        kommando_status.x_aks = (datakoe_lokal[5]<<8)|datakoe_lokal[4]
+        kommando_status.y_aks = (datakoe_lokal[7]<<8)|datakoe_lokal[6]
+        kommando_status.z_aks = (datakoe_lokal[9]<<8)|datakoe_lokal[8]
+        kommando_status.error = kommando_status.avstand-kommando_status.Ref_ny
+        #kommando_status.error = (datakoe_lokal[11]<<8)|datakoe_lokal[10]
+        kommando_status.power = (datakoe_lokal[13]<<8)|datakoe_lokal[12]
+        kommando_status.uP = (datakoe_lokal[15]<<8)|datakoe_lokal[14]
+        kommando_status.uI = (datakoe_lokal[17]<<8)|datakoe_lokal[16]
+        kommando_status.uD = (datakoe_lokal[19]<<8)|datakoe_lokal[18]
         datakoe_lokal_hex =  " ".join(f"{b:02X}" for b in datakoe_lokal)
         
-        f.write(str(datakoe_lokal_hex)+"\n")
+        #log_line = (
+        #    f"{sample} | "
+        #    f"{kommando_status.avstand} | {kommando_status.x_aks} | {kommando_status.y_aks} | {kommando_status.z_aks} | {kommando_status.error} | "
+        #    f"{kommando_status.power} | {kommando_status.uP} | {kommando_status.uI} | {kommando_status.uD}\n"
+        #)
+
+
+        #f.write(log_line)
+        skrivar.writerow([
+            sample, kommando_status.avstand, kommando_status.x_aks, kommando_status.y_aks, kommando_status.z_aks,
+            kommando_status.error, kommando_status.power, kommando_status.uP, kommando_status.uI, kommando_status.uD
+        ])        
+        
+        f.flush
+        
+
         
 
 
 
 if __name__ == "__main__":
 
-    fileNamn = 'logg.txt'
-    f = open(fileNamn, 'w')
+    #fileNamn = 'logg.txt'
+    #f = open(fileNamn, 'w')
+    #f.write("Tid | Avstand | X | Y | Z | Error | Power | uP | uI | uD\n")
+
+    fileNamn = 'csv_logg.csv'
+    f = open(fileNamn,"w",newline="")
+    skrivar = csv.writer(f)
+    skrivar.writerow([
+    "Tid", "Avstand", "X", "Y", "Z", "Error",
+    "Power", "uP", "uI", "uD"
+    ])
+
 
     thread1 = threading.Thread(target=raakode_gui_metoder.sensor_loop)
     thread1.start()
