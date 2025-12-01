@@ -3,8 +3,8 @@ import threading
 start_event = threading.Event()
 stopp_event = threading.Event()
 
-Ref_iv = int(300)
-Kp_iv = int(3*1000)
+Ref_iv = int(300) #mm
+Kp_iv = int(2*1000)
 Ti_iv = int(1*1000)
 Td_iv = int(0*1000)
 

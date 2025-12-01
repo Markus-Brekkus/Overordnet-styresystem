@@ -43,28 +43,52 @@ def print_bytes(data):
 def seriekomm_egen():
     frame_errors = 0
     while not raakode_gui_metoder.stopp_trigger.is_set():
-               
-        data = raakode_gui_metoder.serieport.read(21)
-        if len(data) == 21 and data[0]==0xFF and data[20]==0xF0:
+        # If port is closed or None, stop the loop
+        sp = getattr(raakode_gui_metoder, "serieport", None)
+        if sp is None or not getattr(sp, "is_open", False):
+            time.sleep(0.05)
+            continue
+
+        try:
+            data = sp.read(21)
+        except (serial.SerialException, OSError, AttributeError) as e:
+            print("Serial read aborted:", e)
+            break
+
+        if len(data) == 21 and data[0] == 0xFF and data[20] == 0xF0:
             datakoe.put(data)
         else:
             print('Frame error')
-            frame_errors +=1
+            frame_errors += 1
 
-        if frame_errors>5:
-            seriekomm_resynkroniserar()
+        if frame_errors > 5:
+            try:
+                seriekomm_resynkroniserar()
+            except Exception as e:
+                print("Resync failed:", e)
+                break
             frame_errors = 0
 
         time.sleep(0.01)
 
+
 def seriekomm_resynkroniserar():
+    sp = getattr(raakode_gui_metoder, "serieport", None)
+    if sp is None or not getattr(sp, "is_open", False):
+        raise RuntimeError("Serial port not open for resynchronization")
+
     while True:
-        bitsjekker = raakode_gui_metoder.serieport.read(1)
+        try:
+            bitsjekker = sp.read(1)
+        except (serial.SerialException, OSError, AttributeError) as e:
+            print("Serial read aborted during resync:", e)
+            raise
+
         if bitsjekker == b'\xFF':
             break
-    resterande_beskjed = raakode_gui_metoder.serieport.read(20)
-    ramme = bitsjekker+resterande_beskjed
-    if ramme[-1] == 0xF0:
+    resterande_beskjed = sp.read(20)
+    ramme = (bitsjekker or b"") + (resterande_beskjed or b"")
+    if len(ramme) == 21 and ramme[-1] == 0xF0:
         print('Jadda, fikk til resynkronisering!')
         datakoe.put(ramme)
         return ramme
@@ -105,8 +129,10 @@ def datakoe_handterer():
             kommando_status.y_aks = (datakoe_lokal[7]<<8)|datakoe_lokal[6]
             kommando_status.z_aks = (datakoe_lokal[9]<<8)|datakoe_lokal[8]
             #kommando_status.error = int(kommando_status.avstand)-int(kommando_status.Ref_ny)
-            error_raa = (datakoe_lokal[11]<<8)|datakoe_lokal[10]
-            kommando_status.error = error_raa if error_raa < 2000 else kommando_status.error
+            error_raa = (datakoe_lokal[11] << 8) | datakoe_lokal[10]
+            # interpret as signed int16 and keep only plausible values
+            error_raa = (error_raa - 0x10000) if (error_raa & 0x8000) else error_raa
+            kommando_status.error = error_raa if -2000 <= error_raa <= 2000 else kommando_status.error
             kommando_status.power = (datakoe_lokal[13]<<8)|datakoe_lokal[12]
             kommando_status.uP = (datakoe_lokal[15]<<8)|datakoe_lokal[14]
             kommando_status.uI = (datakoe_lokal[17]<<8)|datakoe_lokal[16]
@@ -259,13 +285,13 @@ if __name__ == "__main__":
     ])
 
 
-    thread1 = threading.Thread(target=raakode_gui_metoder.sensor_loop)
+    thread1 = threading.Thread(target=raakode_gui_metoder.sensor_loop, daemon=True)
     thread1.start()
 
-    thread3 = threading.Thread(target=datakoe_handterer)
+    thread3 = threading.Thread(target=datakoe_handterer, daemon=True)
     thread3.start()
 
-    thread2 = threading.Thread(target=seriekomm_egen)
+    thread2 = threading.Thread(target=seriekomm_egen, daemon=True)
     thread2.start()
 
 

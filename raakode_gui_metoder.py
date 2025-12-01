@@ -51,7 +51,7 @@ serieport = serial.Serial(
     bytesize=serial.EIGHTBITS,   # 8 data bits
     parity=serial.PARITY_NONE,   # No parity
     stopbits=serial.STOPBITS_ONE, # 1 stop bit
-    timeout=None
+    timeout=0.5   # short timeout so reads can check stopp_trigger and threads can exit
 )
 
 def send_RPID(RPID_verdier):
@@ -206,6 +206,11 @@ class MainWindow(QMainWindow):
         print(RPID)
         send_RPID(RPID)
         print("s")
+        # Close serial port to unblock any blocking reads in worker threads
+        try:
+            serieport.close()
+        except Exception:
+            pass
         kommando_status.stopp_event.set()
         stopp_trigger.set()
         self.timer.stop()
