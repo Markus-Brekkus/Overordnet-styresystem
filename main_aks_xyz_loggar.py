@@ -77,56 +77,168 @@ def datakoe_handterer():
     while not raakode_gui_metoder.stopp_trigger.is_set():
         datakoe_lokal = list(datakoe.get())
         print_bytes(datakoe_lokal)
+        if kommando_status.start_event.is_set():
+            # Sjekker hvor mange skritt samplenr. inkrementeres med
+            if start_sjekk:
+                sample=1
+                sample_skritt=0
 
-        # Sjekker hvor mange skritt samplenr. inkrementeres med
-        if start_sjekk:
-            sample=1
-            sample_skritt=0
-            
-            start_sjekk=False       
-        elif datakoe_lokal[1]>sample_prev:
-            sample_skritt = datakoe_lokal[1]-sample_prev
-        elif datakoe_lokal[1]==0:
-            sample_skritt=256-sample_prev
-        elif datakoe_lokal[1]<sample_prev:
-            sample_skritt=datakoe_lokal[1]+256-datakoe_lokal[1]
-        sample=sample+sample_skritt
-        print(sample)
-        print(datakoe_lokal[1])
-        print(sample_skritt)
+                start_sjekk=False       
+            elif datakoe_lokal[1]>sample_prev:
+                sample_skritt = datakoe_lokal[1]-sample_prev
+            elif datakoe_lokal[1]==0:
+                sample_skritt=256-sample_prev
+            elif datakoe_lokal[1]<sample_prev:
+                sample_skritt=datakoe_lokal[1]+256-datakoe_lokal[1]
+            sample=sample+sample_skritt
+            print(sample)
+            print(datakoe_lokal[1])
+            print(sample_skritt)
 
-        sample_prev=datakoe_lokal[1]
-        datakoe_lokal[1]=sample
+            sample_prev=datakoe_lokal[1]
+            datakoe_lokal[1]=sample
 
-        # Omgjøring av innkommende verdier
+            # Omgjøring av innkommende verdier
+            avstand_raa = (datakoe_lokal[3]<<8)|datakoe_lokal[2]
+            kommando_status.avstand = avstand_raa if avstand_raa < 2000 else kommando_status.avstand
+            kommando_status.x_aks = (datakoe_lokal[5]<<8)|datakoe_lokal[4]
+            kommando_status.y_aks = (datakoe_lokal[7]<<8)|datakoe_lokal[6]
+            kommando_status.z_aks = (datakoe_lokal[9]<<8)|datakoe_lokal[8]
+            #kommando_status.error = int(kommando_status.avstand)-int(kommando_status.Ref_ny)
+            error_raa = (datakoe_lokal[11]<<8)|datakoe_lokal[10]
+            kommando_status.error = error_raa if error_raa < 2000 else kommando_status.error
+            kommando_status.power = (datakoe_lokal[13]<<8)|datakoe_lokal[12]
+            kommando_status.uP = (datakoe_lokal[15]<<8)|datakoe_lokal[14]
+            kommando_status.uI = (datakoe_lokal[17]<<8)|datakoe_lokal[16]
+            kommando_status.uD = (datakoe_lokal[19]<<8)|datakoe_lokal[18]
+            datakoe_lokal_hex =  " ".join(f"{b:02X}" for b in datakoe_lokal)
 
-        kommando_status.avstand = (datakoe_lokal[3]<<8)|datakoe_lokal[2]
-        kommando_status.x_aks = (datakoe_lokal[5]<<8)|datakoe_lokal[4]
-        kommando_status.y_aks = (datakoe_lokal[7]<<8)|datakoe_lokal[6]
-        kommando_status.z_aks = (datakoe_lokal[9]<<8)|datakoe_lokal[8]
-        kommando_status.error = kommando_status.avstand-kommando_status.Ref_ny
-        #kommando_status.error = (datakoe_lokal[11]<<8)|datakoe_lokal[10]
-        kommando_status.power = (datakoe_lokal[13]<<8)|datakoe_lokal[12]
-        kommando_status.uP = (datakoe_lokal[15]<<8)|datakoe_lokal[14]
-        kommando_status.uI = (datakoe_lokal[17]<<8)|datakoe_lokal[16]
-        kommando_status.uD = (datakoe_lokal[19]<<8)|datakoe_lokal[18]
-        datakoe_lokal_hex =  " ".join(f"{b:02X}" for b in datakoe_lokal)
+            #log_line = (
+            #    f"{sample} | "
+            #    f"{kommando_status.avstand} | {kommando_status.x_aks} | {kommando_status.y_aks} | {kommando_status.z_aks} | {kommando_status.error} | "
+            #    f"{kommando_status.power} | {kommando_status.uP} | {kommando_status.uI} | {kommando_status.uD}\n"
+            #)
+
+
+            #f.write(log_line)
+
+            skrivar.writerow([
+                sample, kommando_status.avstand, kommando_status.x_aks, kommando_status.y_aks, kommando_status.z_aks,
+                kommando_status.error, kommando_status.power, kommando_status.uP, kommando_status.uI, kommando_status.uD
+            ])        
         
-        #log_line = (
-        #    f"{sample} | "
-        #    f"{kommando_status.avstand} | {kommando_status.x_aks} | {kommando_status.y_aks} | {kommando_status.z_aks} | {kommando_status.error} | "
-        #    f"{kommando_status.power} | {kommando_status.uP} | {kommando_status.uI} | {kommando_status.uD}\n"
-        #)
+            f.flush
+        
+def oppsummering(logge_fil):
+    print("Kort oppsummering")
+    # Error-relaterte metrics
+    # RMSE - Root Mean Square Error
+    # MAE - Mean Absolute Error
+    # Max Absolute Error
+    # Time-in-Tolerance%
+    # IAE - Integral of Absolute Error
+
+    # PID metrics
+    # Average absolute contribution - % of control effort - Viser hvilket av PID leddene som kontributerer mest
+    # StdDev of uD - Derivative noise amplification - Stor std(uD) kan være et tegn på at den amplifiserer støy e.l.
+    # Mean absolute control effort - høy mean-power ved dårlig performance er et tegn på at bedre tuning behøves, evt. anti-windup
+
+    # Overshoot % - høy overshoot kan tyde på aggressiv tuning eller resonans
+    # Actuator saturation - hvis power ofte fører til at styrekortet spør om mer pådrag enn linmoten har tilgjengelig bør den tunes på en annen måte
 
 
-        #f.write(log_line)
-        skrivar.writerow([
-            sample, kommando_status.avstand, kommando_status.x_aks, kommando_status.y_aks, kommando_status.z_aks,
-            kommando_status.error, kommando_status.power, kommando_status.uP, kommando_status.uI, kommando_status.uD
-        ])        
-        
-        f.flush
-        
+    dt = 0.01
+    error_liste=[]
+
+    uP_liste=[]
+    uI_liste=[]
+    uD_liste=[]
+    power_liste=[]
+    distanse_liste=[]
+
+    linmot_limit = 1000
+    TOL = 5.0
+
+    with open(logge_fil,"r") as fil:
+        header = fil.readline()
+        for line in fil:
+            parts = line.strip().split(",")
+
+            distanse = float(parts[1])
+            error = float(parts[5])
+            power = float(parts[6])
+            uP = float(parts[7])
+            uI = float(parts[8])
+            uD = float(parts[9])
+
+            distanse_liste.append(distanse)
+            error_liste.append(error)
+            power_liste.append(power)
+            uP_liste.append(uP)
+            uI_liste.append(uI)
+            uD_liste.append(uD)
+
+    n = len(error_liste)
+
+    # error-metrics
+    kommando_status.IAE = sum(abs(e) * dt for e in error_liste)
+    kommando_status.MAE  = sum(abs(e) for e in error_liste) / n
+    kommando_status.RMSE = (sum(e*e for e in error_liste) / n) ** 0.5
+    kommando_status.max_error = max(abs(e) for e in error_liste)
+    
+    kommando_status.percent_in_tol = 100 * sum(1 for e in error_liste if abs(e) <= TOL) / n
+
+    # PID-metrics
+    avg_abs_uP = sum(abs(x) for x in uP_liste)/n
+    avg_abs_uI = sum(abs(x) for x in uI_liste)/n
+    avg_abs_uD = sum(abs(x) for x in uD_liste)/n
+
+    sum_abs_PID = avg_abs_uP + avg_abs_uI + avg_abs_uD
+    if sum_abs_PID == 0:
+        pct_uP = pct_uI = pct_uD = 0
+    else:
+        pct_uP = 100 * avg_abs_uP/sum_abs_PID
+        pct_uI = 100 * avg_abs_uI/sum_abs_PID
+        pct_uD = 100 * avg_abs_uD/sum_abs_PID
+
+    
+    # std(uD)
+    mean_uD = sum(uD_liste)/n
+    std_uD = (sum((x - mean_uD)**2 for x in uD_liste)/n)**0.5
+    # Total kontrolleffekt 
+    mean_abs_power = sum(abs(x) for x in power_liste)/n
+
+    # Ekstra relevante metrics
+    overshoot = max(error_liste)
+
+    # Overshoot relativt til gjennomsnittsdistanse - %
+    mean_distanse = sum(distanse_liste)/n
+    overshoot_pct = 100*(overshoot / mean_distanse) if mean_distanse != 0 else 0
+
+    # Actuator saturation
+    saturation_pct = 100 * sum(1 for p in power_liste if abs(p) >= linmot_limit) / n
+
+
+
+
+    print("IAE =",kommando_status.IAE)
+    print("MAE =",kommando_status.MAE)
+    print("RMSE =",kommando_status.RMSE)
+    print("max_error =",kommando_status.max_error)
+    print("Time in tolerance ±5mm = ", kommando_status.percent_in_tol,"%")
+
+    print("Gjennomsnittlig |uP|:",avg_abs_uP)
+    print("Gjennomsnittlig |uI|:",avg_abs_uI)
+    print("Gjennomsnittlig |uD|:",avg_abs_uD)
+    print("P/I/D ratio:",pct_uP,"%",pct_uI,"%",pct_uD,"%")
+    print("std(uD):",std_uD)
+    print("Gjennomsnittlig |power|:",mean_abs_power)
+
+    print("Overshoot abs:",overshoot)
+    print("Overshoot %:",overshoot_pct)
+    print("Linmot saturering:",saturation_pct)
+
+
 
         
 
@@ -163,45 +275,12 @@ if __name__ == "__main__":
     vindu.show()
     applikasjon.exec()    
 
-    f, aks_sub = mpl.subplots(6, sharex=True)
-    aks_sub[0].plot(kommando_status.tid, kommando_status.a_x)
-    aks_sub[1].plot(kommando_status.tid, kommando_status.a_y)
-    aks_sub[2].plot(kommando_status.tid, kommando_status.a_z)
-    aks_sub[3].plot(kommando_status.tid, kommando_status.aks_abs)
-    aks_sub[4].plot(kommando_status.tid, kommando_status.stamp)
-    aks_sub[5].plot(kommando_status.tid, kommando_status.rull)
-    aks_sub[5].set_xlabel('Tid [sek]')
-    aks_sub[1].set_ylabel('Akselerasjon [g]')
-    aks_sub[4].set_ylabel('Vinkel [grader]')
-    aks_sub[0].set_title('a_x')
-    aks_sub[1].set_title('a_y')
-    aks_sub[2].set_title('a_z')
-    aks_sub[3].set_title('aks_abs - absolutt akselerasjon')
-    aks_sub[4].set_title('Stampvinkel (om Y-aksen)')
-    aks_sub[5].set_title('Rullvinkel (om X-aksen)')
-    aks_sub[0].grid()
-    aks_sub[1].grid()
-    aks_sub[2].grid()
-    aks_sub[3].grid()
-    aks_sub[4].grid()
-    aks_sub[5].grid()
+    f.close()
+    raakode_gui_metoder.serieport.close()
 
-    mpl.show()    
+    oppsummering(fileNamn)
 
- # Skriv ut listene for kontroll
-    print(kommando_status.tid_raa)
-    print(kommando_status.tid)
-    print(len(kommando_status.tid))
-    #print(kommando_status.a_x_raa)
-    #print(len(kommando_status.a_x_raa))
-    #print(kommando_status.a_y_raa)
-    #print(len(kommando_status.a_y_raa))
-    #print(kommando_status.a_z_raa)
-    #print(len(kommando_status.a_z_raa))
-    print(kommando_status.stamp)
-    print(len(kommando_status.a_x))
-    print(kommando_status.rull)
-    print(len(kommando_status.a_x))
 
-    #ani=FuncAnimation(fig, update, init_func=init, interval=50, blit=True)
-    #mpl.show()
+
+
+

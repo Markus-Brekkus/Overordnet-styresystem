@@ -4,9 +4,9 @@ start_event = threading.Event()
 stopp_event = threading.Event()
 
 Ref_iv = int(300)
-Kp_iv = int(4000)
-Ti_iv = int(0)
-Td_iv = int(10)
+Kp_iv = int(3*1000)
+Ti_iv = int(1*1000)
+Td_iv = int(0*1000)
 
 Ref_ny = Ref_iv
 Kp_ny = Kp_iv
@@ -36,4 +36,10 @@ power = 0
 uP = 0
 uI = 0
 uD = 0
+
+IAE = 0
+MAE = 0
+RMSE = 0
+max_error = 0
+percent_in_tol = 0
 
