@@ -8,6 +8,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import kommando_status
 import serial
+import csv
 
 # Oppsett for innhenting og stopping av sensordata ----------------
 delta_t = 0.05 # Periodetid for sampling i live-plottet
@@ -46,12 +47,12 @@ def sensor_loop(): #Funksjon som setter inn måleverdien fra sensor og rullerer 
 # ---------------------------------------------------------------
 
 serieport = serial.Serial(
-    port='COM13',
+    port=kommando_status.COMport_nr,
     baudrate=115200,
-    bytesize=serial.EIGHTBITS,   # 8 data bits
-    parity=serial.PARITY_NONE,   # No parity
+    bytesize=serial.EIGHTBITS,   # 8 databit
+    parity=serial.PARITY_NONE,   # Ingen paritet
     stopbits=serial.STOPBITS_ONE, # 1 stop bit
-    timeout=0.5   # short timeout so reads can check stopp_trigger and threads can exit
+    timeout=1   # Timeout som gjør at koden flyter vider ved mangel på data
 )
 
 def send_RPID(RPID_verdier):
@@ -76,7 +77,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("ELE340 - Gruppe E")
 
-        # Setter opp ønsket layout på GUI: 3 blokker horisontalt med undergrupper for: Grafer, setpunkt, start/stopp
+        # Setter opp ønsket layout på GUI
         gridman = QVBoxLayout()
 
         subgrid_graf = QVBoxLayout()
@@ -88,7 +89,7 @@ class MainWindow(QMainWindow):
         Td_modul = QVBoxLayout()
         knapp_modul = QVBoxLayout()
 
-        # Setter opp Graf 1 og 2, per nå er graf 1 bare en avlesning av X-retning på aks-måler, og 2 er den deriverte av dette
+        # Setter opp Grafer
         self.graf = Mpl_grafer(self)
         self.graf_error = Mpl_grafer(self)
         ax = self.graf.ax
@@ -118,7 +119,7 @@ class MainWindow(QMainWindow):
 
         # Setter opp en timer for å automatisk oppdatere plottene
         self.timer = QTimer()
-        self.timer.setInterval(50)
+        self.timer.setInterval(25)
         self.timer.timeout.connect(self.update_plot)
         self.timer.start()
 
@@ -127,21 +128,26 @@ class MainWindow(QMainWindow):
         self.Ref_LCD = QLCDNumber()
         self.Ref_LCD.display(kommando_status.Ref_iv/10)
         self.Ref_txt = QLineEdit()
+        self.Ref_txt.setText(str(int(kommando_status.Ref_iv/10)))
+        
 
         Kp_modul.addWidget(QLabel("P [x1000]"))
         self.Kp_LCD = QLCDNumber()
         self.Kp_LCD.display(kommando_status.Kp_iv/1000)
         self.Kp_txt = QLineEdit()
+        self.Kp_txt.setText(str(int(kommando_status.Kp_iv/1000)))
 
         Ti_modul.addWidget(QLabel("I"))
         self.Ti_LCD = QLCDNumber()
         self.Ti_LCD.display(kommando_status.Ti_iv/1000)
         self.Ti_txt = QLineEdit()
+        self.Ti_txt.setText(str(int(kommando_status.Ti_iv/1000)))
 
         Td_modul.addWidget(QLabel("D"))
         self.Td_LCD = QLCDNumber()
         self.Td_LCD.display(kommando_status.Td_iv/1000)
         self.Td_txt = QLineEdit()
+        self.Td_txt.setText(str(int(kommando_status.Td_iv/1000)))
 
         self.knapp_start = QPushButton("Start")
         self.knapp_stopp = QPushButton("Stopp")
@@ -192,29 +198,36 @@ class MainWindow(QMainWindow):
 
     # Div funksjoner for knapp-events og oppdatering av GUI-elementer
     def start_kommando(self):
-        print("k")   
+           
         kommando_status.start_event.set()
-        kommando='k'
-        status = 'k'
+        #kommando='k'
+        #status = 'k'
         RPID = (BE_til_LE(kommando_status.Ref_iv))+(BE_til_LE(kommando_status.Kp_iv))+(BE_til_LE(kommando_status.Ti_iv))+(BE_til_LE(kommando_status.Td_iv))
         print(RPID)
         send_RPID(RPID)        
         
 
     def stopp_kommando(self):
-        RPID = (BE_til_LE(300))+(BE_til_LE(0))+(BE_til_LE(0))+(BE_til_LE(0))
-        print(RPID)
-        send_RPID(RPID)
-        print("s")
-        # Close serial port to unblock any blocking reads in worker threads
-        try:
-            serieport.close()
-        except Exception:
-            pass
-        kommando_status.stopp_event.set()
-        stopp_trigger.set()
-        self.timer.stop()
-        QApplication.quit()
+        if kommando_status.stopp_teller == 0:
+            RPID = (BE_til_LE(300))+(BE_til_LE(0))+(BE_til_LE(0))+(BE_til_LE(0))
+            print(RPID)
+            send_RPID(RPID)
+            try:
+                serieport.close()
+            except Exception:
+                pass
+            kommando_status.stopp_event.set()
+            stopp_trigger.set()
+            self.timer.stop()
+            kommando_status.stopp_teller = 1
+            self.knapp_stopp.setText("Lukk program")
+
+            # Show summary window (reads csv_logg.csv)
+            self.summary_win = SecondWindow(self, csv_path="csv_logg.csv")
+            self.summary_win.show()
+        else:
+            QApplication.quit()
+            
 
     def update_plot(self):
         self.line.set_ydata(sensor_data["avstand"])
@@ -249,62 +262,165 @@ class MainWindow(QMainWindow):
         kommando_status.Td_ny = float(self.Td_txt.text())
 
         try:
-            print(1)
+            Ref_ok = 0
+            Kp_ok = 0
+            Ti_ok = 0
+            Td_ok = 0
+
             Ref_verdi = int(kommando_status.Ref_ny)*10
-            print(2)
             Kp_verdi = int(kommando_status.Kp_ny*1000)
             Ti_verdi = int(kommando_status.Ti_ny*1000)
             Td_verdi = int(kommando_status.Td_ny*1000)
-            print(3)
-            print(Ref_verdi)
-            print(Kp_verdi)
-            print(Ti_verdi)
-            print(Td_verdi)
-            if 10 < int(kommando_status.Ref_ny) < 400:
-                self.Ref_LCD.display(float(kommando_status.Ref_ny))   
+
+            if 20 <= int(kommando_status.Ref_ny) <= 150:
+                Ref_ok = 1   
             else:
-                print("Vennligst skriv et tall innenfor 20 og 150 [cm].")
-            self.Kp_LCD.display(kommando_status.Kp_ny)
-            self.Ti_LCD.display(kommando_status.Ti_ny)
-            self.Td_LCD.display(kommando_status.Td_ny)
-            RPID = (BE_til_LE(Ref_verdi))+(BE_til_LE(Kp_verdi))+(BE_til_LE(Ti_verdi))+(BE_til_LE(Td_verdi))
-            print(RPID)
-            send_RPID(RPID)
+                print("Referansen må være et tall innenfor 20 og 150 [cm].")
+            
+            if 0 <= float(kommando_status.Kp_ny) <= 50:
+                Kp_ok = 1
+            else:
+                print("Kp må være et tall innenfor 0 og 50 [x1000].")
+            
+            if 0 <= float(kommando_status.Ti_ny) <= 50:
+                Ti_ok = 1
+            else:
+                print("Ti må være et tall innenfor 0 og 50.")
+            
+            if 0 <= float(kommando_status.Td_ny) <= 50:
+                Td_ok = 1
+            else:
+                print("Td må være et tall innenfor 0 og 50.")
+            
+            if Ref_ok and Kp_ok and Ti_ok and Td_ok:
+                self.Ref_LCD.display(kommando_status.Ref_ny)
+                self.Kp_LCD.display(kommando_status.Kp_ny)
+                self.Ti_LCD.display(kommando_status.Ti_ny)
+                self.Td_LCD.display(kommando_status.Td_ny)
+                RPID = (BE_til_LE(Ref_verdi))+(BE_til_LE(Kp_verdi))+(BE_til_LE(Ti_verdi))+(BE_til_LE(Td_verdi))
+                print(RPID)
+                send_RPID(RPID)
         except ValueError:
-            print("Vennligst skriv et tall innenfor 20 og 150 [cm].")
+            print("Vennligst skriv et tall innenfor 20 og 150 [cm] på referansen og tall mellom 0 og 50 for PID-parametrene.")
 #------------------------------------------------------------------
 # GUI oppsummering ---------We've had one, yes, but what about second GUI? ----------------------------------
+
 class SecondWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-
+    def __init__(self, parent=None, csv_path="csv_logg.csv"):
+        super().__init__(parent)
         self.setWindowTitle("ELE340 - Gruppe E - Oppsummering")
+        self.resize(420, 320)
 
-        # Setter opp ønsket layout på GUI
-        gridman_the_second = QVBoxLayout()
+        self.csv_path = csv_path
 
-        self.oppsummering = QGroupBox("Ytelsessammendrag")
-        oppsummering_layout = QFormLayout()
+        self.oppsummering_group = QGroupBox("Ytelsessammendrag")
+        layout = QFormLayout()
 
+        # compute metrics
+        metrics = self._compute_metrics(self.csv_path)
 
-        oppsummering_layout.addRow("IAE:", QLabel(f"{kommando_status.IAE:.3f}"))
-        oppsummering_layout.addRow("MAE:", QLabel(f"{kommando_status.MAE:.3f}"))
-        oppsummering_layout.addRow("RMSE:", QLabel(f"{kommando_status.RMSE:.3f}"))
-        oppsummering_layout.addRow("Max absolutt Error:", QLabel(f"{kommando_status.max_error:.3f}"))
-        oppsummering_layout.addRow("Tid innenfor ±5mm i %:", QLabel(f"{kommando_status.percent_in_tol:.2f}%"))
+        layout.addRow("IAE:", QLabel(f"{metrics['IAE']:.3f}"))
+        layout.addRow("MAE:", QLabel(f"{metrics['MAE']:.3f}"))
+        layout.addRow("RMSE:", QLabel(f"{metrics['RMSE']:.3f}"))
+        layout.addRow("Max absolutt Error:", QLabel(f"{metrics['max_error']:.3f}"))
+        layout.addRow("Tid innenfor ±5mm i %:", QLabel(f"{metrics['percent_in_tol']:.2f}%"))
+        layout.addRow("Gj.snitt |uP|:", QLabel(f"{metrics['avg_abs_uP']:.3f}"))
+        layout.addRow("Gj.snitt |uI|:", QLabel(f"{metrics['avg_abs_uI']:.3f}"))
+        layout.addRow("Gj.snitt |uD|:", QLabel(f"{metrics['avg_abs_uD']:.3f}"))
+        layout.addRow("P/I/D %:", QLabel(f"{metrics['pct_uP']:.1f}% / {metrics['pct_uI']:.1f}% / {metrics['pct_uD']:.1f}%"))
+        layout.addRow("std(uD):", QLabel(f"{metrics['std_uD']:.3f}"))
+        layout.addRow("Gj.snitt |power|:", QLabel(f"{metrics['mean_abs_power']:.3f}"))
+        layout.addRow("Overshoot (abs):", QLabel(f"{metrics['overshoot']:.3f}"))
+        layout.addRow("Overshoot (% av gj.snitt):", QLabel(f"{metrics['overshoot_pct']:.2f}%"))
+        layout.addRow("Linmot saturering %:", QLabel(f"{metrics['saturation_pct']:.2f}%"))
 
-        self.oppsummering.setLayout(oppsummering_layout)
-        gridman_the_second.addWidget(self.oppsummering)
+        self.oppsummering_group.setLayout(layout)
+        container = QWidget()
+        v = QVBoxLayout()
+        v.addWidget(self.oppsummering_group)
+        container.setLayout(v)
+        self.setCentralWidget(container)
 
-        widget2 = QWidget()
-        widget2.setLayout(gridman_the_second)
-        self.setCentralWidget(widget2)
+    def _compute_metrics(self, filename):
+        # defaults
+        metrics = {
+            "IAE": 0.0, "MAE": 0.0, "RMSE": 0.0, "max_error": 0.0,
+            "percent_in_tol": 0.0,
+            "avg_abs_uP": 0.0, "avg_abs_uI": 0.0, "avg_abs_uD": 0.0,
+            "pct_uP": 0.0, "pct_uI": 0.0, "pct_uD": 0.0,
+            "std_uD": 0.0, "mean_abs_power": 0.0,
+            "overshoot": 0.0, "overshoot_pct": 0.0, "saturation_pct": 0.0
+        }
+        try:
+            with open(filename, "r", newline="") as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                error_l = []
+                uP_l = []
+                uI_l = []
+                uD_l = []
+                power_l = []
+                distanse_l = []
+                for row in reader:
+                    if len(row) < 10:
+                        continue
+                    # CSV format: "Tid", "Avstand", "X", "Y", "Z", "Error", "Power", "uP", "uI", "uD"
+                    try:
+                        dist = float(row[1])
+                        err = float(row[5])
+                        power = float(row[6])
+                        uP = float(row[7])
+                        uI = float(row[8])
+                        uD = float(row[9])
+                    except ValueError:
+                        continue
+                    distanse_l.append(dist)
+                    error_l.append(err)
+                    power_l.append(power)
+                    uP_l.append(uP)
+                    uI_l.append(uI)
+                    uD_l.append(uD)
 
-        self.resize(400, 600)
+            n = len(error_l)
+            if n == 0:
+                return metrics
 
+            dt = 0.01
+            metrics["IAE"] = sum(abs(e) * dt for e in error_l)
+            metrics["MAE"] = sum(abs(e) for e in error_l) / n
+            metrics["RMSE"] = (sum(e*e for e in error_l) / n) ** 0.5
+            metrics["max_error"] = max(abs(e) for e in error_l)
+            TOL = 5.0
+            metrics["percent_in_tol"] = 100 * sum(1 for e in error_l if abs(e) <= TOL) / n
 
+            metrics["avg_abs_uP"] = sum(abs(x) for x in uP_l)/n
+            metrics["avg_abs_uI"] = sum(abs(x) for x in uI_l)/n
+            metrics["avg_abs_uD"] = sum(abs(x) for x in uD_l)/n
 
+            sum_abs_PID = metrics["avg_abs_uP"] + metrics["avg_abs_uI"] + metrics["avg_abs_uD"]
+            if sum_abs_PID == 0:
+                metrics["pct_uP"] = metrics["pct_uI"] = metrics["pct_uD"] = 0.0
+            else:
+                metrics["pct_uP"] = 100 * metrics["avg_abs_uP"]/sum_abs_PID
+                metrics["pct_uI"] = 100 * metrics["avg_abs_uI"]/sum_abs_PID
+                metrics["pct_uD"] = 100 * metrics["avg_abs_uD"]/sum_abs_PID
 
+            mean_uD = sum(uD_l)/n
+            metrics["std_uD"] = (sum((x - mean_uD)**2 for x in uD_l)/n)**0.5
+            metrics["mean_abs_power"] = sum(abs(x) for x in power_l)/n
+
+            metrics["overshoot"] = max(error_l)
+            mean_distanse = sum(distanse_l)/n if n else 0.0
+            metrics["overshoot_pct"] = 100*(metrics["overshoot"] / mean_distanse) if mean_distanse != 0 else 0.0
+
+            linmot_limit = 1000
+            metrics["saturation_pct"] = 100 * sum(1 for p in power_l if abs(p) >= linmot_limit) / n
+        except FileNotFoundError:
+            # no file yet
+            pass
+        except Exception as e:
+            print("Error computing summary:", e)
+        return metrics
 # -----------------------------------------------------------------------------------------------
 
 if __name__ == "__main__":

@@ -1,12 +1,19 @@
 import threading
 
-start_event = threading.Event()
-stopp_event = threading.Event()
 
+# ---------------------------------------------------------------
+# Initialverdier
 Ref_iv = int(300) #mm
 Kp_iv = int(2*1000)
 Ti_iv = int(1*1000)
 Td_iv = int(0*1000)
+COMport_nr = 'COM13'  # Endres etter behov
+# ---------------------------------------------------------------
+# Globale eventer og variabler
+start_event = threading.Event()
+stopp_event = threading.Event()
+stopp_teller = 0
+
 
 Ref_ny = Ref_iv
 Kp_ny = Kp_iv
